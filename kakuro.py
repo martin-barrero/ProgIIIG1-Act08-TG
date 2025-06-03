@@ -249,3 +249,98 @@ def Revise(xi, xj, domains, sumConstraints):
       domains[xi] -= to_remove
 
   return revised
+
+# Algoritmo AC-3 para propagación de restricciones
+def AC3(domains, sumConstraints):
+  queue = deque(GetArcs(sumConstraints))
+  while queue:
+    xi, xj = queue.popleft()
+    if Revise(xi, xj, domains, sumConstraints):
+      if not domains[xi]:
+        return False
+      for group in sumConstraints:
+        cells = group[1]
+        if xi in cells:
+          for xk in cells:
+            if xk != xi and xk != xj:
+              queue.append((xk, xi))
+  return domains
+
+# Inferencia combinada: cruces de dominio + diferencia + AC-3, iterada hasta estabilizar dominios
+def InferWithAC3(vars, sumConstraints, differenceConstraints):
+  varDoms = copy.deepcopy(vars)
+  while True:
+    old = copy.deepcopy(varDoms)
+    varDoms = DomainCrossing(neighbors, varDoms)
+    varDoms = ConsistenceDifference(differenceConstraints, varDoms)
+    varDoms = AC3(varDoms, sumConstraints)
+    if varDoms == old:
+      break
+  return varDoms
+
+# --- BÚSQUEDA CON BACKTRACKING ---
+
+# Verifica si el tablero está completamente asignado
+def IsComplete(domains):
+  return all(len(domains[v]) == 1 for v in domains if domains[v] != {0} and not any(" " in str(s) for s in domains[v]))
+
+# Selecciona la siguiente variable para asignar usando heurística MRV (mínimo dominio)
+def SelectUnassignedVariable(domains):
+  candidates = [v for v in domains if len(domains[v]) > 1 and domains[v] != {0} and not any(" " in str(s) for s in domains[v])]
+  return min(candidates, key=lambda v: len(domains[v])) if candidates else None
+
+# Algoritmo de búsqueda con retroceso usando inferencia AC-3 para asignar valores
+def BacktrackingSearch(domains):
+  if IsComplete(domains):
+    return domains
+  var = SelectUnassignedVariable(domains)
+  if var is None:
+    return domains
+  for value in domains[var]:
+    new_domains = copy.deepcopy(domains)
+    new_domains[var] = {value}
+    new_domains = InferWithAC3(new_domains, sumConstraints, differenceConstraints)
+    if new_domains:
+      result = BacktrackingSearch(new_domains)
+      if result:
+        return result
+  return False
+
+# --- EJECUCIÓN ---
+
+# Obtener las restricciones por columnas y filas
+colsConstraints = DefColsConstraints(idCols, dom) 
+rowsConstraints = DefRowsConstraints(idCols, dom)
+
+# Filtrar listas vacías (sin celdas blancas)
+colsConstraintsDifference = [sublist for sublist in colsConstraints if sublist]
+rowsConstraintsDifference = [sublist for sublist in rowsConstraints if sublist]
+
+# Ajustar grupos para que sean contiguos
+fixCols = FixColsConstraints(colsConstraintsDifference)
+fixRows = FixRowsConstraints(rowsConstraintsDifference)
+
+# Definir restricciones de suma para columnas y filas ajustadas
+colsSumConstraints = DefSumColsConstraints(fixCols)
+rowsSumConstraints = DefSumRowsConstraints(fixRows)
+
+# Combinar todas las restricciones de suma
+sumConstraints = colsSumConstraints + rowsSumConstraints
+# Combinar las listas de grupos contiguos para restricciones de diferencia
+differenceConstraints = fixCols + fixRows
+
+# Diccionario para almacenar restricciones que afectan cada celda
+cellConstraints = defaultdict(list)
+
+# Construir vecinos según las restricciones de suma
+neighbors = Neighbors(sumConstraints)
+
+# Ejecutar inferencia inicial con AC-3
+vars = InferWithAC3(vars, sumConstraints, differenceConstraints)
+
+# Si no está completo, aplicar búsqueda con retroceso
+if not IsComplete(vars):
+  vars = BacktrackingSearch(vars)
+
+# Imprimir el tablero final (resuelto o parcialmente resuelto)
+PrintBoard(vars)
