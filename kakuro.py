@@ -122,3 +122,130 @@ def DefSumRowsConstraints(rowsConstraintsDifference):
     constraintData = [element, constraint, combinations]
     sumConstraints.append(constraintData)
   return sumConstraints
+
+# --- FUNCIONES DE CONSISTENCIA ---
+
+# Propagación: reduce dominios en función de las combinaciones válidas que coinciden con vecinos
+def DomainCrossing(neighbors, varDoms):
+  for cell, clues in neighbors.items():
+    for clue in clues:
+      group = next((g for g in sumConstraints if g[0] == clue), None)
+      if group is None:
+        continue
+      groupCells = group[1]
+      combinations = group[2]
+      if cell not in groupCells:
+        continue
+
+      i = groupCells.index(cell)
+      possible_values = set()
+      for comb in combinations:
+        valid = True
+        for j, var in enumerate(groupCells):
+          if var == cell:
+            continue
+          if comb[j] not in varDoms[var]:
+            valid = False
+            break
+        if valid:
+          possible_values.add(comb[i])
+      varDoms[cell] = varDoms[cell].intersection(possible_values)
+  return varDoms
+
+# En cada grupo, si una celda tiene valor fijo, eliminar ese valor de dominios de las demás (restricción de diferencia)
+def ConsistenceDifference(constraints, varDoms):
+  for constraint in constraints:
+    for var in constraint:
+      if len(varDoms[var]) == 1:
+        for varAux in constraint:
+          if varAux != var:
+            varDoms[varAux].discard(list(varDoms[var])[0])
+  return varDoms
+
+# --- FUNCIONES AUXILIARES ---
+
+# Construye el diccionario de vecinos (pistas a las que pertenece cada celda blanca)
+def Neighbors(sumConstraints):
+  neighbors = {var: [] for var in vars}
+  # Lista de todas las celdas blancas (no bloqueadas ni pistas)
+  whiteCells = list(set([clave for sublista in differenceConstraints for clave in sublista]))
+  neighbors = {k: v for k, v in neighbors.items() if k in whiteCells}
+  # Para cada grupo de suma, añadir la pista como vecino de las celdas
+  for group in sumConstraints:
+    groupName = group[0]
+    groupCells = group[1]
+    for cell in groupCells:
+      if cell in whiteCells and groupName not in neighbors[cell]:
+        neighbors[cell].append(groupName)
+  return neighbors
+
+# Imprime el tablero de Kakuro con el estado actual de variables
+def PrintBoard(vars):
+  print("Kakuro Code: ", code, "\n")
+  print(" ".join("  ABCDEFGHI"))
+  print(" ".join("  ---------"))
+  for i in range(1, 10):
+    row = []
+    for c in "ABCDEFGHI":
+      cell = f"{c}{i}"
+      val = vars[cell]
+      if val == {0}:
+        row.append("0")      # Celda negra
+      elif any(" " in str(v) for v in val):
+        row.append("X")      # Celda con pista
+      elif len(val) == 1:
+        row.append(str(list(val)[0]))  # Celda con valor único asignado
+      else:
+        row.append(".")      # Celda sin valor fijo aún
+    print(i, "|", " ".join(row))
+
+# Obtener arcos para AC-3: pares de variables en el mismo grupo de suma
+def GetArcs(sumConstraints):
+  arcs = []
+  for group in sumConstraints:
+    cells = group[1]
+    for xi in cells:
+      for xj in cells:
+        if xi != xj:
+          arcs.append((xi, xj))
+  return arcs
+
+# --- ALGORITMO AC-3 ---
+
+# Revisar consistencia entre xi y xj; eliminar valores inconsistentes de dominio de xi
+def Revise(xi, xj, domains, sumConstraints):
+  revised = False
+  to_remove = set()
+
+  relevant_groups = [g for g in sumConstraints if xi in g[1] and xj in g[1]]
+
+  for vi in domains[xi]:
+    valid = False
+    for group in relevant_groups:
+      cells = group[1]
+      combos = group[2]
+      idx_xi = cells.index(xi)
+      idx_xj = cells.index(xj)
+
+      for combo in combos:
+        if combo[idx_xi] == vi and combo[idx_xj] in domains[xj]:
+          compatible = True
+          for k, cell in enumerate(cells):
+            if cell == xi or cell == xj:
+              continue
+            if combo[k] not in domains[cell]:
+              compatible = False
+              break
+          if compatible:
+            valid = True
+            break
+      if valid:
+        break
+    if not valid:
+      to_remove.add(vi)
+      revised = True
+
+  if revised:
+      domains[xi] -= to_remove
+
+  return revised
