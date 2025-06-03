@@ -19,7 +19,7 @@ strKeys = [f"{key[1]}{key[0]}" for key in keys]
 vars = {key: dom.copy() for key in strKeys}
 
 # Lectura del archivo con el código del tablero y valores iniciales por celda
-with open('c:/Juan UTP/Programación III/python/board3.txt', 'r') as f:
+with open('ProgIIIG1-Act08-KK5BOEIP-Board.txt', 'r') as f:
   code = f.readline().strip()  # Código identificador del tablero
   for key in vars.keys():
     valor = f.readline().strip()
